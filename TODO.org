@@ -327,10 +327,40 @@ Choices so far: toy paper first, core Lean only (no Mathlib), model calls via
         sees Concepts stripped, like Defs)
   - [ ] Back-translation of each new definition (checkpoint 2b)
   - [ ] Approvals record hashes of the definitions a statement uses;
-        changing one voids dependent approvals (=approval_problem()=)
+        changing one voids dependent approvals (=approval_problem()=).
+        Use an elaborated closure hash (see "Efficiency": what the statement
+        says plus every Defs/Concepts declaration it reaches), not a text hash
   - [ ] Test on the real paper: typing + all-derivation claims
         (c-AoA-blocks, c60, c61, c-strict, …); review together with the
         open =Defs.notes.md= items ((55b), (79), ∃-closure, pointwise Ans)
+
+* TODO Efficiency (lessons from PaperFormalizer)
+  Compared 2026-11-07 with =../PaperFormalizer= (author-in-the-loop, Mathlib
+  scale). These fit the current design without changing SPEC principles.
+  Not taken: their repair-by-default, no-Lean referee pass, web UI, toolkit.
+  Open SPEC question, not scheduled: let the orchestrator pin inferable
+  readings at checkpoint 2 and have the user review them in one batch
+  afterwards (their "clarifications"), against our "surfaced, not resolved".
+  - [ ] *Closure hash*: a small Lean metaprogram (run via =lake env lean=)
+        printing, per declaration, a hash of its elaborated type (+ value for
+        defs) and of every run-local declaration that reaches; insensitive to
+        proofs, comments, docstrings. Their version: =candidate_scan
+        --fingerprints= in PaperFormalizer's toolkit template (=CandidateScan.lean=)
+  - [ ] *Basis caching*: store each model judgment (back-translation,
+        comparison, prove outcome) with the hash of exactly what the call was
+        shown (closure hash, stripped Lean, claim LaTeX, prompt version); a
+        re-run skips items whose basis is unchanged (=--fresh= to force).
+        Today =backtranslate= and =prove= redo every item they are given
+  - [ ] *Proof carry-over*: when Defs/Concepts change, recompile the existing
+        =claims/<id>.lean= against them first; re-prove only those that fail
+        or whose closure hash moved (no model call for the rest)
+  - [ ] *Budgets on disk*: retry/attempt counters persisted in the run, so
+        =--resume= cannot refund them; check against the current per-call caps
+  - [ ] *Mechanical lints*: unused-hypothesis lint (textual: binder names never
+        used in the proof, advisory when =simp_all=/=assumption=/=omega=-style
+        tactics appear) and an unused-helper sweep over claim files. The first
+        feeds the generalization stage's mechanical pass
+  - [ ] =--dry-run=: walk every step with no model calls or Lean builds (wiring smoke test)
 
 * TODO Agent and model independence (SPEC.md §4, §8)
   Future-proofing; only Claude is tested and supported for now (README says so).
@@ -527,7 +557,8 @@ Choices so far: toy paper first, core Lean only (no Mathlib), model calls via
   Decided 2026-11-07: an optional stage after =prove= that adds stronger or
   more compact results and never replaces approved statements or outcomes.
   After the report exists, since its output mostly shows up there.
-  - [ ] Mechanical pass, no model calls: for each proved claim, delete each
+  - [ ] Mechanical pass, no model calls: start from the unused-hypothesis
+        lint (see "Efficiency"); then for each proved claim, delete each
         hypothesis / replace each specific constant by a variable, recompile
         the existing proof, record what survives
   - [ ] Prompt =prompts/generalize.md=: proved claims + proofs + Defs/Concepts
