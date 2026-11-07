@@ -523,6 +523,27 @@ Choices so far: toy paper first, core Lean only (no Mathlib), model calls via
         (seen 2026-11-06); harmless (same provider, can't bias a reading)
         but the probe doesn't check for it
 
+* TODO Generalization stage (SPEC.md §4 "Generalization", checkpoint 4b)
+  Decided 2026-11-07: an optional stage after =prove= that adds stronger or
+  more compact results and never replaces approved statements or outcomes.
+  After the report exists, since its output mostly shows up there.
+  - [ ] Mechanical pass, no model calls: for each proved claim, delete each
+        hypothesis / replace each specific constant by a variable, recompile
+        the existing proof, record what survives
+  - [ ] Prompt =prompts/generalize.md=: proved claims + proofs + Defs/Concepts
+        → general lemmas, merges, repairs of refuted claims
+  - [ ] Runner step =generalize [ids]= → =General.lean= + =generalizations.json=;
+        each result must prove its covered approved statements as corollaries;
+        =audit()= as for claim files; new notions go via =concepts=
+  - [ ] Vacuity check (hypotheses can all be true at once, via oracle search)
+        and triviality flag (holds by unfolding alone)
+  - [ ] Back-translation of each general statement, as explanation (no compare)
+  - [ ] Checkpoint 4b decisions in =decisions.json=; report section
+  - [ ] Simplified definitions, last: accepted only with an =old ↔ new=
+        proof, which carries approvals over; otherwise back to checkpoint 2
+  - [ ] Test on the real paper (the Hamblin-set claims c13, c16, … look like
+        instances of one lemma)
+
 * TODO Later / maybe
   - [ ] *Build on linglib* (deferred 2026-11-05; next step would be
         rewriting =examples/toy/Fragment.lean= on top of it) (=../linglib=, Lean 4.35 + Mathlib, built).
@@ -536,6 +557,7 @@ Choices so far: toy paper first, core Lean only (no Mathlib), model calls via
         - pipeline prompts would need a curated linglib cheat sheet (2350 files),
           unless Lean MCP lemma search covers it (see Lean MCP)
         - user's clone is on branch =human-review-status= with local edits: pin a commit
-  - [ ] Suggested repairs as separate proposals the user can accept (SPEC.md §9)
+  - [ ] Suggested repairs as separate proposals the user can accept (SPEC.md §9);
+        for refuted claims this is part of the generalization stage
   - [ ] Web review page (SPEC.md §12), only if conversation review is too painful
   - [ ] Mathlib, if real papers need it (sets, lattices, cardinality)

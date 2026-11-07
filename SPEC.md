@@ -60,6 +60,7 @@ Everything goes in one run directory per paper (currently `runs/<paper>/`).
 | `Concepts.lean` | Notions that claims need but the paper doesn't define as such, built on `Defs.lean` (stage 2b, see "Concepts" in §4) |
 | `statements.json` | Per claim: its Lean statement (a closed `Prop`, from stage 3) and notes. Frozen once approved: stage 4 proves or refutes exactly this |
 | `claims/<id>.lean` | One file per claim: a theorem `<id>` (proved) or `<id>_false : ¬ …` (refuted, with a counterexample) |
+| `General.lean`, `generalizations.json` | Stage 4b results (see "Generalization" in §4): general lemmas, each with the corollary proofs of the claims it covers, the definitions it proposes, and the user's verdict on it |
 | `Oracle.lean` (+ CLI wrapper) | The executable oracle (§6) |
 | `results.json` | Per claim: outcome, Lean's own rendering of the statement, axioms used, attempts, cost |
 | `review/<stage>.md` | One review file per checkpoint halt (§4) |
@@ -178,6 +179,7 @@ agent's decisions" for the user to approve or overturn afterwards.
 | 2b | **Concepts** (`Concepts.lean`), per batch of claims, before stating them | Each new notion: its definition, and the interpretive choice it makes |
 | 3 | **State claims** (statement only, no proof yet) | Each statement's fidelity. *This is the key fidelity checkpoint*: a faithful statement that turns out false is a finding, and an unfaithful statement is a bug |
 | 4 | **Prove / refute** | Nothing, unless the prover wants to change a statement (rule 4 above). Outcomes are reported, with each refutation's counterexample in the paper's own terms |
+| 4b | **Generalize** (optional) | Each proposed result: is it meaningful and worth keeping? Nothing downstream depends on this stage, so a rejected result costs nothing |
 | 5 | **Oracle** | A few sample queries whose answers the user already knows, as a sanity check |
 
 ### Concepts (stage 2b)
@@ -215,6 +217,56 @@ statement. Back-translating a statement shows the translator Concepts as
 well as Defs (stripped the same way). An approval records the hashes of
 the definitions the statement depends on, so changing a notion voids the
 approval of every statement that uses it.
+
+### Generalization (stage 4b)
+
+After prove/refute, an optional stage looks for stronger and more compact
+results than the paper states. It **adds** results and never replaces
+anything: approved statements, `claims/<id>.lean` and outcomes stay as
+they are. Four operations, from safest to riskiest:
+
+1. **Strengthen a proved claim**: drop hypotheses the proof doesn't use,
+   or replace a specific example by a class of examples (e.g. a claim
+   about the Hamblin set of (13) becomes one about every LF of the form
+   *which-N λx. … ?*).
+2. **Merge claims**: several claims are instances of one general lemma.
+3. **Generalize a refutation**: the weakest added hypothesis under which
+   the refuted claim holds. This is a suggested repair, so §9 applies: it
+   is a separate proposal the user can accept, never a change to the claim.
+4. **Simplify definitions**: a more compact definition in `Defs.lean` or
+   `Concepts.lean`.
+
+Rules, enforced by the runner:
+
+- **Each original is a corollary.** A general result comes with a proof of
+  each approved statement it claims to cover, derived from the general
+  result (e.g. `theorem c13 : <approved statement> := gen_c13 ex13 …`).
+  This is how Lean checks that a generalization covers the original and
+  didn't quietly change it. Without these proofs, a result is not accepted.
+- **Simplified definitions need an equivalence proof.** A new definition is
+  accepted only with a theorem that it is equivalent to the old one
+  (`old ↔ new`, or `old = new`). With that proof, existing approvals carry
+  over without another review. Without it, the definition is only a
+  proposal, and adopting it sends it back to checkpoint 2, voiding the
+  approvals that depend on the old one.
+- **New notions are concepts.** A generalization that needs a new notion
+  (e.g. "LFs of the form which-N …") gets it from the concepts stage and
+  checkpoint 2b, not from a definition of its own. The `audit()` rules for
+  claim files apply to `General.lean`.
+- **Screened for vacuity and triviality.** The runner checks with the
+  oracle's bounded search (§6) that a result's hypotheses can all be true
+  at once, and flags results that hold by unfolding definitions alone.
+
+At **checkpoint 4b** the user judges whether each result is meaningful and
+worth keeping. This is not a fidelity check, since these results are not
+the paper's claims. Blind back-translation (below) is reused to explain
+each general statement in plain English, but no comparison with the paper
+is made, because there is nothing in the paper to compare it with.
+
+Build order: first a mechanical pass with no model calls, which deletes
+each hypothesis and replaces each specific constant by a variable, then
+recompiles the existing proof. Then model-proposed generalizations, with
+the corollary check. Simplifying definitions comes last.
 
 ### The review file
 
@@ -423,6 +475,9 @@ predictions.
 - every interpretive choice made at checkpoint 2, with what the user chose;
 - the agent's decisions (§4), each one open to approval or reversal;
 - **open** claims with their bounded-check status;
+- accepted generalizations (stage 4b): each general result, the claims it
+  covers, and proposed repairs of refuted claims, kept apart from the
+  paper's own claims;
 - unreviewed items (from `--auto`) clearly marked.
 
 ## 8. Installation and runtime
