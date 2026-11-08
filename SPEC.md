@@ -52,51 +52,73 @@ that makes the theory precise and tells the author where it breaks.
 
 ### PDF input
 
-No converter reads a PDF without errors, so accuracy comes from checking,
-not from the choice of converter. Every formula or tree an extracted item
-uses is either **confirmed by two independent reads that agree**, or
-**shown to the user next to a crop of the original page**.
+No reader of a PDF is free of errors, so accuracy comes from checking, not
+from the choice of reader. For a PDF with a text layer (one produced
+directly from LaTeX), the check is deterministic: the text layer has the
+exact characters, the model's transcription supplies the structure, and the
+two must agree. No local models are used.
 
-1. **Convert once, cheaply.** Prose comes from the PDF's text layer (e.g.
-   `pdftotext`), which is exact for a PDF produced directly from LaTeX.
-   Formulas come from a local math converter (Marker to begin with; a
-   commercial one such as Mathpix sends an unpublished paper to a third
-   party, so only with the user's consent). The converter must record each
-   block's page and bounding box, so the runner can crop the original
-   region of any passage. The result goes in `source/` like any other
-   preprocessed source, cached per page.
-2. **Check only what extraction uses.** After stage 1, for each item in
-   `claims.json` the runner crops its region and makes a **second read**:
-   an isolated vision call that transcribes the crop to LaTeX without
-   seeing the converter's output or anything else of the paper. The two
-   reads are compared after normalizing the LaTeX (whitespace,
-   `\left`/`\right`, `\lambda` vs. `λ`, …), and, where that is
-   inconclusive, by rendering both and comparing the images. Where the
-   text layer has the characters of a formula, it is a third witness.
-   - The reads agree: the item is confirmed, and the check is logged.
-   - They disagree: the item goes to the user at checkpoint 1 with the
-     crop and both reads rendered side by side, and the user picks one or
-     corrects it.
-3. **Trees and diagrams.** Converters drop them or keep only the caption,
-   but in semantics they carry content (LFs, derivations, lattices). A
-   vision call transcribes each tree an item uses into labelled bracket
-   notation; the runner re-renders it (e.g. with `forest`) and shows it
-   next to the crop. Trees always need the user's confirmation, even when
-   two reads agree: a misplaced node changes the analysis without looking
-   wrong at a glance. Figures with no formal content are ignored, and the
-   runner says so.
+1. **Prose from the text layer.** It is exact (e.g. via PyMuPDF or
+   `pdftotext`), apart from line-end hyphenation and running headers,
+   which the runner removes.
+2. **Find the math by font, not by a model.** The text layer records the
+   font of every glyph, and math is set in its own fonts (math italic,
+   symbol, extension, `stmaryrd`, …). The runner groups math glyphs into
+   regions (a display, an example, an inline formula with its line) and
+   crops each one, snapped to whole lines.
+3. **Transcribe each region** with an isolated vision call (see "The
+   transcription calls" below), which returns LaTeX. Results are cached
+   per region.
+4. **Check each transcription against the text layer.** The runner
+   compiles the transcription, reads the glyphs of the result, and
+   compares them with the glyphs of the original region:
+   - **characters**: the same multiset, after a per-font normalization
+     table for fonts without a Unicode map (e.g. the TeX extension font's
+     delimiter sizes, calibrated by rendering each size once);
+   - **levels**: each glyph raised, lowered or on the baseline, from its
+     size and baseline relative to its line;
+   - **order**: the two sequences in reading order align with nothing out
+     of place. This is what catches swapped arguments (`(x)(y)` for
+     `(y)(x)`), which the first two checks cannot see. It applies only to
+     linear material: a two-dimensional layout (a tree, a multi-line
+     display, a label over a brace) is checked for characters and levels
+     only.
 
-**The transcription calls** (the second read and the tree transcription)
-are model calls made by the runner during preprocessing, as an exception
-to the rule above. They are isolated like the back-translator (§4, "Blind
-back-translation"): each sees one crop and an instruction to transcribe it,
-nothing else, so it can only transcribe, not interpret. Their prompts and
-outputs go in `log/`.
+   A transcription that fails is retried once with the compiler's error
+   (if it failed to compile), then once with a stronger model. One that
+   still fails is put to the user at checkpoint 1, with the crop and the
+   rendered transcription side by side and the differences listed, but
+   only if an extracted item uses it. The rest stay recorded as unchecked.
+5. **Trees and diagrams.** In semantics they carry content (LFs,
+   derivations, lattices). A vision call transcribes each tree into
+   labelled bracket notation; the runner re-renders it (e.g. with
+   `forest`) and shows it next to the crop. The node labels are checked
+   against the text layer, but the branching is drawn as lines, not
+   glyphs, so trees always need the user's confirmation. Figures with no
+   formal content are ignored, and the runner says so.
+6. **No text layer** (a scanned PDF): nothing deterministic to check
+   against, so every formula and tree an extracted item uses goes to the
+   user. A commercial OCR service (e.g. Mathpix) sends an unpublished
+   paper to a third party, so it is used only with the user's consent.
+
+**What the check cannot see**: anything drawn as a line (fraction bars,
+`\overline`, tree branches), and grouping that prints identically. These
+are the residual risk on a passed item.
+
+**The transcription calls** are model calls made by the runner during
+preprocessing, as an exception to the rule above. They are isolated like
+the back-translator (§4, "Blind back-translation"): each sees one crop and
+an instruction to transcribe it, nothing else, so it can only transcribe,
+not interpret. They get an allowed package list wide enough for what
+papers print (e.g. `pifont` for ✓/✗), and no tools: the image is passed
+as content. Default model: Sonnet at its default effort, escalating to
+Opus on a failed check (see TODO.org, "PDF input", for the measurement
+behind this). Their prompts and outputs go in `log/`.
 
 **Disclosure.** The review files and the report say for each item whether
-its formulas were confirmed by agreement, confirmed by the user, or came
-from LaTeX source. Passages no item uses are never checked, and the report
-says so.
+its formulas came from LaTeX source, passed the check, or were confirmed
+by the user, and list the checks that don't apply to it (order, for a
+two-dimensional layout).
 
 ## 3. Outputs
 
@@ -611,9 +633,11 @@ with surface and inverse scope readings). On it:
 
 PDF input (§2): on the PDF of a paper whose LaTeX is in the suite, every
 formula and tree an extracted item uses either matches the LaTeX or is put
-to the user; none is confirmed by agreement while differing from the
-source. The transcription calls pass the same canary and context-probe
-checks as the translator.
+to the user; none passes the check while differing from the source. Planted
+misreadings (swapped arguments, ı for ι, ∀/∃, dropped or moved
+subscripts, dropped primes) in correct transcriptions are all caught. The
+transcription calls pass the same canary and context-probe checks as the
+translator.
 
 Before calling the project usable, add at least one real published
 semantics paper with a hand-checked answer key.
@@ -644,7 +668,7 @@ semantics paper with a hand-checked answer key.
   pending items marked at their passages, built from the same review files
   and `decisions.json`. Only worth building if reviewing in the
   conversation turns out to be too painful for long papers.
-- **PDF converter**: Marker is the starting point (§2, "PDF input"). To
-  be settled by measuring: convert the PDF of a paper we have LaTeX for
-  (the first real paper) and compare formulas and trees with the source,
-  before building the rest.
+- **Locating items in a PDF**: the measurement located items with SyncTeX,
+  which a user's PDF doesn't have. How the runner maps an extracted item
+  to its regions (matching its prose against the text layer) is untested,
+  and SyncTeX itself mislocated claims about single tree nodes.

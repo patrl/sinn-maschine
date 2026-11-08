@@ -453,23 +453,55 @@ Choices so far: toy paper first, core Lean only (no Mathlib), model calls via
   - [ ] Multi-file LaTeX (=\input= / =\include=): flatten, e.g. =latexpand=
   - [ ] Author macros: expand (=de-macro= or own expander); keep original
         text for quoting in review files
-  - [ ] PDF input (SPEC.md §2 "PDF input", decided 2026-11-08; branch
-        =pdf-input=): convert once, check only what extraction uses
-    - [ ] Measure first: convert the EHK paper's PDF (Marker + =pdftotext=,
-          neither installed yet) and compare formulas and trees with its
-          LaTeX; record the error rate here before building the rest
+  - [ ] PDF input (SPEC.md §2 "PDF input"; branch =pdf-input=). Design
+        revised 2026-11-08 after the measurement: no local models (Marker
+        rejected); Claude transcribes math regions, the text layer checks
+        each transcription deterministically (characters, levels, order)
+    - [X] (2026-11-08) Measurement on the EHK paper, PDF compiled from its
+          own source (29 pp., pdflatex, Type 1 fonts); items located with
+          SyncTeX; 83 extracted items with math (71 linear, 8 trees, 4 claims
+          about one tree node). Scripts: =experiments/pdf/= (=measure.py=,
+          =mutate.py=, =analyze2.py=, =cal.tex= = cmex calibration). Spent ≈ $2.60,
+          $1.57 of it on an Opus judge used only for ground truth
+      - Image to =claude -p= works with no tools: =--input-format stream-json=,
+        image as a content block
+      - Cost per item: Haiku (low effort) $0.0005, Sonnet $0.005, Opus $0.011
+      - 71 linear items, check passes: Haiku 45, Sonnet 62. Real misreadings,
+        all caught: Haiku ι→ı ×4, dropped QP subscript ×8, a dropped example
+        number, 3 compile failures after retry; Sonnet: an extra =]= ×2, type
+        parens rewritten as ⟨⟩ ×2 (notation "normalized" toward convention).
+        Opus fixed all 3 Sonnet errors it was given. Remaining fails (≈7%)
+        are harness artifacts: ✗ not printable with the allowed packages,
+        stray glyphs of the neighbouring line in the crop, a real hyphen at a
+        line end dropped as hyphenation
+      - Judge run on ~60 passes (3 models): no transcription error slipped
+        past the check once the overbrace handling was fixed; the judge itself
+        missed an ι/ı the check caught
+      - Mutation test (59 clean Sonnet transcriptions): 151/151 planted
+        misreadings caught; swapped arguments only by the order check
+      - Order check: no false flags on linear items; flags every 2D layout
+        (trees, multi-line =aligned=, brace labels), so it applies to linear
+        material only
+      - Decision: Sonnet default → Opus on a failed check → user. Haiku-first
+        would save ≈ $0.25 per paper but fails a third of items
     - [ ] Ask for LaTeX source before accepting a PDF
-    - [ ] Runner step: text layer for prose, converter for math, block
-          page/bbox kept → =source/=, cached per page
-    - [ ] Locate each extracted item's blocks; crop its region
-    - [ ] Second read: isolated vision call per crop → LaTeX; normalize and
-          compare (render both when inconclusive); text layer as third witness
-    - [ ] Trees: vision transcription to bracket notation, re-rendered with
-          =forest=, always put to the user
-    - [ ] Checkpoint 1 shows crop + both reads for disagreements and trees
-    - [ ] Per-item provenance (agreement / user / LaTeX) in review files and report
-    - [ ] Acceptance: PDF of a suite paper; isolation canaries for the
-          transcription calls
+    - [ ] Runner step: text layer (PyMuPDF) for prose, minus running headers
+          (detect by repetition, not the measurement's fixed bands) and
+          hyphenation; math regions by font; crops snapped to whole lines and
+          excluding glyphs of neighbouring lines → =source/=, cached per region
+    - [ ] Transcription call (isolated, image as content, no tools); allowed
+          packages incl. =pifont=; retry on compile error, escalate on check fail
+    - [ ] Glyph check from =experiments/pdf/measure.py=: per-font tables
+          (cmex calibrated, stmaryrd, small caps), levels, order; calibrate
+          other math font setups (newtx, unicode-math) when a paper uses them
+    - [ ] Locate each extracted item's regions without SyncTeX (match its
+          prose against the text layer); untested (SPEC.md §12)
+    - [ ] Trees: bracket-notation transcription, node labels checked,
+          re-rendered with =forest=, always put to the user
+    - [ ] Checkpoint 1 shows crop + rendered transcription + differences
+    - [ ] Per-item provenance (LaTeX / check passed / user) in review files and report
+    - [ ] Acceptance: PDF of a suite paper; planted misreadings; isolation
+          canaries for the transcription calls
   - [ ] User notes ("Def 3 is intensional", "ignore §6") passed to every step
 
 * TODO Acceptance suite (SPEC.md §10)
