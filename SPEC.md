@@ -30,9 +30,11 @@ that makes the theory precise and tells the author where it breaks.
   - LaTeX source: a single file, or a main file with `\input`/`\include`
     and author macros. This is preferred because formulas come through
     exactly.
-  - PDF. Formulas extracted from a PDF are unreliable, so the
-    fidelity checkpoint (§4) must show the user how each extracted formula
-    reads and ask them to confirm it.
+  - PDF, as a fallback. Formulas and trees read from a PDF are
+    unreliable, so every one an extracted item uses is checked (see "PDF
+    input" below). Since the user is usually the author, the runner asks
+    for the LaTeX source before converting a PDF (an arXiv e-print has
+    it too).
 - **Optional**: notes from the user, such as "Def 3 is meant
   intensionally" or "ignore §6". These go into every later step.
 - **Preprocessing** is deterministic and done by the runner, once, before
@@ -42,11 +44,59 @@ that makes the theory precise and tells the author where it breaks.
   - author macros are expanded (e.g. `de-macro`, or the runner's own
     expander), keeping the original next to the expanded text so the
     review file can quote the paper as written;
-  - a PDF is converted to LaTeX by an external converter (e.g. Marker,
-    Mathpix), followed by the user confirmation above.
+  - a PDF is converted to LaTeX (see "PDF input" below).
 
   Model calls never do this work themselves, and no LaTeX tool or MCP is
-  given to them.
+  given to them. The one exception is the transcription calls for PDF
+  input, below.
+
+### PDF input
+
+No converter reads a PDF without errors, so accuracy comes from checking,
+not from the choice of converter. Every formula or tree an extracted item
+uses is either **confirmed by two independent reads that agree**, or
+**shown to the user next to a crop of the original page**.
+
+1. **Convert once, cheaply.** Prose comes from the PDF's text layer (e.g.
+   `pdftotext`), which is exact for a PDF produced directly from LaTeX.
+   Formulas come from a local math converter (Marker to begin with; a
+   commercial one such as Mathpix sends an unpublished paper to a third
+   party, so only with the user's consent). The converter must record each
+   block's page and bounding box, so the runner can crop the original
+   region of any passage. The result goes in `source/` like any other
+   preprocessed source, cached per page.
+2. **Check only what extraction uses.** After stage 1, for each item in
+   `claims.json` the runner crops its region and makes a **second read**:
+   an isolated vision call that transcribes the crop to LaTeX without
+   seeing the converter's output or anything else of the paper. The two
+   reads are compared after normalizing the LaTeX (whitespace,
+   `\left`/`\right`, `\lambda` vs. `λ`, …), and, where that is
+   inconclusive, by rendering both and comparing the images. Where the
+   text layer has the characters of a formula, it is a third witness.
+   - The reads agree: the item is confirmed, and the check is logged.
+   - They disagree: the item goes to the user at checkpoint 1 with the
+     crop and both reads rendered side by side, and the user picks one or
+     corrects it.
+3. **Trees and diagrams.** Converters drop them or keep only the caption,
+   but in semantics they carry content (LFs, derivations, lattices). A
+   vision call transcribes each tree an item uses into labelled bracket
+   notation; the runner re-renders it (e.g. with `forest`) and shows it
+   next to the crop. Trees always need the user's confirmation, even when
+   two reads agree: a misplaced node changes the analysis without looking
+   wrong at a glance. Figures with no formal content are ignored, and the
+   runner says so.
+
+**The transcription calls** (the second read and the tree transcription)
+are model calls made by the runner during preprocessing, as an exception
+to the rule above. They are isolated like the back-translator (§4, "Blind
+back-translation"): each sees one crop and an instruction to transcribe it,
+nothing else, so it can only transcribe, not interpret. Their prompts and
+outputs go in `log/`.
+
+**Disclosure.** The review files and the report say for each item whether
+its formulas were confirmed by agreement, confirmed by the user, or came
+from LaTeX source. Passages no item uses are never checked, and the report
+says so.
 
 ## 3. Outputs
 
@@ -54,7 +104,7 @@ Everything goes in one run directory per paper (currently `runs/<paper>/`).
 
 | Artifact | Contents |
 |---|---|
-| `source/` | The preprocessed paper (flattened, macros expanded, or converted from PDF) plus the original (§2) |
+| `source/` | The preprocessed paper (flattened, macros expanded, or converted from PDF) plus the original; for a PDF also block positions, crops and the per-item read check (§2, "PDF input") |
 | `claims.json` | Extracted items: id, kind (`definition` / `claim` / `example`), label, verbatim LaTeX, faithful informal statement, analysis (examples: the LF and/or translation the paper assigns), dependencies, concerns, and source location (computed by the runner by finding the verbatim LaTeX in the source, never reported by the model). Approval status is not stored here: it lives in `decisions.json` |
 | `Defs.lean` | The theory: types, lexicon, composition rules, model class, definitions, numbered examples and their representations |
 | `Concepts.lean` | Notions that claims need but the paper doesn't define as such, built on `Defs.lean` (stage 2b, see "Concepts" in §4) |
@@ -559,6 +609,12 @@ with surface and inverse scope readings). On it:
 - 5 claims proved and the 4 planted errors refuted with the countermodels
   in its `EXPECTED.md`; a claim about "both readings" is stated for both.
 
+PDF input (§2): on the PDF of a paper whose LaTeX is in the suite, every
+formula and tree an extracted item uses either matches the LaTeX or is put
+to the user; none is confirmed by agreement while differing from the
+source. The transcription calls pass the same canary and context-probe
+checks as the translator.
+
 Before calling the project usable, add at least one real published
 semantics paper with a hand-checked answer key.
 
@@ -588,5 +644,7 @@ semantics paper with a hand-checked answer key.
   pending items marked at their passages, built from the same review files
   and `decisions.json`. Only worth building if reviewing in the
   conversation turns out to be too painful for long papers.
-- **PDF extraction**: which tool to use, and how much formula
-  reconstruction to attempt before asking the user.
+- **PDF converter**: Marker is the starting point (§2, "PDF input"). To
+  be settled by measuring: convert the PDF of a paper we have LaTeX for
+  (the first real paper) and compare formulas and trees with the source,
+  before building the rest.

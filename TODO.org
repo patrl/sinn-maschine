@@ -453,8 +453,23 @@ Choices so far: toy paper first, core Lean only (no Mathlib), model calls via
   - [ ] Multi-file LaTeX (=\input= / =\include=): flatten, e.g. =latexpand=
   - [ ] Author macros: expand (=de-macro= or own expander); keep original
         text for quoting in review files
-  - [ ] PDF input via converter (Marker / Mathpix; choice is an open
-        decision); formulas confirmed by the user
+  - [ ] PDF input (SPEC.md §2 "PDF input", decided 2026-11-08; branch
+        =pdf-input=): convert once, check only what extraction uses
+    - [ ] Measure first: convert the EHK paper's PDF (Marker + =pdftotext=,
+          neither installed yet) and compare formulas and trees with its
+          LaTeX; record the error rate here before building the rest
+    - [ ] Ask for LaTeX source before accepting a PDF
+    - [ ] Runner step: text layer for prose, converter for math, block
+          page/bbox kept → =source/=, cached per page
+    - [ ] Locate each extracted item's blocks; crop its region
+    - [ ] Second read: isolated vision call per crop → LaTeX; normalize and
+          compare (render both when inconclusive); text layer as third witness
+    - [ ] Trees: vision transcription to bracket notation, re-rendered with
+          =forest=, always put to the user
+    - [ ] Checkpoint 1 shows crop + both reads for disagreements and trees
+    - [ ] Per-item provenance (agreement / user / LaTeX) in review files and report
+    - [ ] Acceptance: PDF of a suite paper; isolation canaries for the
+          transcription calls
   - [ ] User notes ("Def 3 is intensional", "ignore §6") passed to every step
 
 * TODO Acceptance suite (SPEC.md §10)
